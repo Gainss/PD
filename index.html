@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>拼豆图纸生成 · 全色号显示</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-container">
+    <h1>
+        🧩 拼豆图纸生成
+        <span>52x52 · 全格显色号</span>
+    </h1>
+    <div class="sub">234种拼豆专用色 | 左键绘制 · 右键/长按吸取 | 导出图纸/色卡/历史</div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="tool-group">
+            <button id="exportBtn" title="导出当前图纸为PNG">📥 图纸PNG</button>
+            <button id="exportUsedPaletteBtn" title="导出已用色卡为PNG">🖼️ 色卡PNG</button>
+            <button id="exportHistoryBtn" title="导出历史数据(JSON)">📤 保存本次数据</button>
+            <button id="importHistoryBtn" title="导入历史数据(JSON)">📥 导入历史JSON</button>
+            <input type="file" id="importHistoryInput" accept=".json,application/json" style="display: none;">
+            <button id="uploadBtn" title="上传图片转图纸">📁 图片转图纸</button>
+            <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+        </div>
+        <div class="tool-group">
+            <button id="clearBtn">🗑️ 清空</button>
+        </div>
+    </div>
+
+    <!-- 画布区域（支持横向滚动） -->
+    <div class="canvas-wrapper">
+        <canvas id="pixelCanvas"></canvas>
+    </div>
+
+    <!-- 底部：色卡 + 统计面板 -->
+    <div class="status-bar">
+        <div class="palette-header">
+            <div class="palette-header-left">
+                <span>🎨 拼豆全色卡（共234色）· 悬停/长按显示色号</span>
+                <div class="mode-buttons">
+                    <button id="brushModeBtn" class="active">✏️ 画笔</button>
+                    <button id="eraserModeBtn">🧽 橡皮</button>
+                </div>
+            </div>
+            <span class="footer-info">⚡ 点击/拖动绘制 | 长按吸取</span>
+        </div>
+        <div id="paletteGrid" class="palette-grid"></div>
+
+        <div class="stats-section">
+            <div class="stats-header">
+                <div>
+                    <span>📊 颜色使用统计 (已用颜色)</span>
+                    <div class="sort-buttons">
+                        <button id="sortByNameAsc" title="按色系升序（A→Z）">🔼 色系</button>
+                        <button id="sortByCountDesc" class="active-sort" title="按使用数量降序">🔽 数量</button>
+                    </div>
+                </div>
+            </div>
+            <div id="statsContainer" class="stats-grid">
+                <div style="color: #7b6e5d; text-align: center; padding: 12px;">绘制图案后统计将自动更新</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="signature">
+        ✦ 设计 · Gainss ✦
+    </div>
+</div>
+
+<script src="js/color.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
