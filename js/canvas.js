@@ -42,7 +42,7 @@ function bindCanvasEvents() {
     window.addEventListener('mouseup', () => { state.isDrawing = false; });
     canvas.addEventListener('mouseleave', () => { state.isDrawing = false; });
 
-    // ========== 移动端触摸事件（重新设计） ==========
+    // 移动端触摸事件
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
@@ -50,15 +50,12 @@ function bindCanvasEvents() {
         touchStartY = touch.clientY;
         hasMoved = false;
         longPressTriggered = false;
-        state.isDrawing = true; // 允许连续绘制
+        state.isDrawing = true;
 
-        // 启动长按计时器
         if (longPressTimer) clearTimeout(longPressTimer);
         longPressTimer = setTimeout(() => {
-            // 长按触发：吸取颜色，不绘制
             longPressTriggered = true;
             pickColorFromEvent({ clientX: touchStartX, clientY: touchStartY });
-            // 吸取后，阻止后续绘制操作
             state.isDrawing = false;
         }, 500);
     });
@@ -69,7 +66,6 @@ function bindCanvasEvents() {
         const dx = Math.abs(touch.clientX - touchStartX);
         const dy = Math.abs(touch.clientY - touchStartY);
 
-        // 移动距离超过 5px 视为拖动，取消长按
         if (dx > 5 || dy > 5) {
             hasMoved = true;
             if (longPressTimer) {
@@ -78,10 +74,8 @@ function bindCanvasEvents() {
             }
         }
 
-        // 如果长按已触发，忽略后续绘制
         if (longPressTriggered) return;
 
-        // 拖动绘制
         if (state.isDrawing) {
             handleDraw({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {} });
         }
@@ -89,29 +83,24 @@ function bindCanvasEvents() {
 
     canvas.addEventListener('touchend', (e) => {
         e.preventDefault();
-        // 清除长按计时器
         if (longPressTimer) {
             clearTimeout(longPressTimer);
             longPressTimer = null;
         }
 
-        // 如果没有移动且长按未触发 → 视为点击，执行一次绘制
         if (!hasMoved && !longPressTriggered) {
-            // 临时确保绘制状态
             const wasDrawing = state.isDrawing;
             state.isDrawing = true;
             handleDraw({ clientX: touchStartX, clientY: touchStartY, preventDefault: () => {} });
             state.isDrawing = wasDrawing;
         }
 
-        // 重置状态
         state.isDrawing = false;
         hasMoved = false;
         longPressTriggered = false;
     });
 }
 
-// 根据事件坐标吸取颜色
 function pickColorFromEvent(e) {
     const rect = state.canvas.getBoundingClientRect();
     const scaleX = state.canvas.width / rect.width;
