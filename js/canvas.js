@@ -182,7 +182,8 @@ export function drawFullGrid() {
         for (let col = 0; col < state.gridWidth; col++) {
             const hex = state.gridData[row][col];
             const name = state.hexToNameMap.get(hex.toUpperCase());
-            if (!name) continue;
+            // 空白颜色不显示文字
+            if (!name || name === '空白') continue;
 
             const { r, g, b } = rgbFromHex(hex);
             const luminance = 0.299 * r + 0.587 * g + 0.114 * b;

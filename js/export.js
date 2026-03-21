@@ -12,7 +12,7 @@ export function exportCanvasPNG() {
 }
 
 export function exportUsedPalettePNG() {
-    const colors = getColorStats();
+    const colors = getColorStats(); // 已排除空白
     if (colors.length === 0) {
         alert('没有使用任何颜色');
         return;
@@ -177,11 +177,29 @@ export function uploadImage(file) {
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            const maxWidth = 400;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+            }
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            tempCtx.drawImage(img, 0, 0, width, height);
+            
+            tempCtx.filter = 'blur(0.8px)';
+            tempCtx.drawImage(tempCanvas, 0, 0);
+            tempCtx.filter = 'none';
+            
             const offCanvas = document.createElement('canvas');
             offCanvas.width = state.gridWidth;
             offCanvas.height = state.gridHeight;
             const offCtx = offCanvas.getContext('2d');
-            offCtx.drawImage(img, 0, 0, state.gridWidth, state.gridHeight);
+            offCtx.drawImage(tempCanvas, 0, 0, state.gridWidth, state.gridHeight);
+            
             const imageData = offCtx.getImageData(0, 0, state.gridWidth, state.gridHeight);
             const data = imageData.data;
             for (let row = 0; row < state.gridHeight; row++) {

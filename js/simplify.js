@@ -1,21 +1,162 @@
-// simplify.js - 颜色简化（聚类压缩）
+// simplify.js - 颜色简化（聚类压缩 + 小区域合并 + 边缘平滑）
 import { state } from './state.js';
 import { rgbFromHex, rgbToHex, findClosestPaletteColor } from './utils.js';
 import { drawFullGrid } from './canvas.js';
 
 /**
- * 将当前画布使用的颜色压缩到指定数量（通过 K-means 聚类）
- * @param {number} targetColorCount 目标颜色数量，建议 1~100
+ * 合并小区域（面积 ≤ maxArea，且该颜色全局出现次数 ≤ maxCount）
+ * 排除空白颜色
  */
+function mergeSmallRegions(maxArea = 3, maxColorCount = 3) {
+    const H = state.gridHeight;
+    const W = state.gridWidth;
+    const directions = [[-1,0],[1,0],[0,-1],[0,1]];
+    let changed = false;
+
+    const globalColorCount = new Map();
+    for (let i = 0; i < H; i++) {
+        for (let j = 0; j < W; j++) {
+            const hex = state.gridData[i][j];
+            const name = state.hexToNameMap.get(hex.toUpperCase());
+            if (name === '空白') continue;
+            globalColorCount.set(hex, (globalColorCount.get(hex) || 0) + 1);
+        }
+    }
+
+    const visited = Array(H).fill().map(() => Array(W).fill(false));
+    const regions = [];
+
+    for (let i = 0; i < H; i++) {
+        for (let j = 0; j < W; j++) {
+            if (!visited[i][j]) {
+                const hex = state.gridData[i][j];
+                const name = state.hexToNameMap.get(hex.toUpperCase());
+                if (name === '空白') {
+                    visited[i][j] = true;
+                    continue;
+                }
+                const color = hex;
+                const cells = [];
+                const queue = [[i, j]];
+                visited[i][j] = true;
+
+                while (queue.length) {
+                    const [r, c] = queue.shift();
+                    cells.push([r, c]);
+                    for (const [dr, dc] of directions) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < H && nc >= 0 && nc < W && !visited[nr][nc] && state.gridData[nr][nc] === color) {
+                            visited[nr][nc] = true;
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+                regions.push({ color, cells, area: cells.length });
+            }
+        }
+    }
+
+    const smallRegions = regions.filter(reg => 
+        reg.area <= maxArea && (globalColorCount.get(reg.color) || 0) <= maxColorCount
+    );
+
+    if (smallRegions.length === 0) return false;
+
+    for (const region of smallRegions) {
+        const neighborCount = new Map();
+        for (const [r, c] of region.cells) {
+            for (const [dr, dc] of directions) {
+                const nr = r + dr;
+                const nc = c + dc;
+                if (nr >= 0 && nr < H && nc >= 0 && nc < W) {
+                    const neighborColor = state.gridData[nr][nc];
+                    if (neighborColor !== region.color) {
+                        neighborCount.set(neighborColor, (neighborCount.get(neighborColor) || 0) + 1);
+                    }
+                }
+            }
+        }
+        if (neighborCount.size === 0) continue;
+
+        let bestColor = null;
+        let maxCount = 0;
+        for (const [color, cnt] of neighborCount) {
+            if (cnt > maxCount) {
+                maxCount = cnt;
+                bestColor = color;
+            }
+        }
+        if (bestColor) {
+            for (const [r, c] of region.cells) {
+                if (state.gridData[r][c] !== bestColor) {
+                    state.gridData[r][c] = bestColor;
+                    changed = true;
+                }
+            }
+        }
+    }
+    return changed;
+}
+
+/**
+ * 边缘平滑：3x3邻域内多数颜色替换，排除空白
+ */
+function smoothEdges() {
+    const H = state.gridHeight;
+    const W = state.gridWidth;
+    const newGrid = JSON.parse(JSON.stringify(state.gridData));
+    let changed = false;
+
+    for (let i = 0; i < H; i++) {
+        for (let j = 0; j < W; j++) {
+            const colorCount = new Map();
+            for (let di = -1; di <= 1; di++) {
+                for (let dj = -1; dj <= 1; dj++) {
+                    const ni = i + di;
+                    const nj = j + dj;
+                    if (ni >= 0 && ni < H && nj >= 0 && nj < W) {
+                        const color = state.gridData[ni][nj];
+                        const name = state.hexToNameMap.get(color.toUpperCase());
+                        if (name === '空白') continue;
+                        colorCount.set(color, (colorCount.get(color) || 0) + 1);
+                    }
+                }
+            }
+            if (colorCount.size === 0) continue;
+
+            let maxCount = 0;
+            let dominantColor = null;
+            for (const [color, cnt] of colorCount) {
+                if (cnt > maxCount) {
+                    maxCount = cnt;
+                    dominantColor = color;
+                }
+            }
+            if (dominantColor && maxCount >= 5 && dominantColor !== state.gridData[i][j]) {
+                newGrid[i][j] = dominantColor;
+                changed = true;
+            }
+        }
+    }
+
+    if (changed) {
+        state.gridData = newGrid;
+        drawFullGrid();
+    }
+    return changed;
+}
+
 export async function simplifyColors(targetColorCount) {
     try {
         console.log('开始简化颜色，目标数量:', targetColorCount);
 
-        // 收集当前所有使用的颜色及其出现次数
-        const colorCountMap = new Map(); // hex -> count
+        const colorCountMap = new Map();
         for (let row = 0; row < state.gridHeight; row++) {
             for (let col = 0; col < state.gridWidth; col++) {
                 const hex = state.gridData[row][col];
+                const name = state.hexToNameMap.get(hex.toUpperCase());
+                if (name === '空白') continue;
                 colorCountMap.set(hex, (colorCountMap.get(hex) || 0) + 1);
             }
         }
@@ -28,13 +169,11 @@ export async function simplifyColors(targetColorCount) {
 
         console.log('当前使用颜色数量:', usedColors.length);
 
-        // 如果当前颜色数已经小于等于目标，无需简化
         if (usedColors.length <= targetColorCount) {
             alert(`当前图案仅使用 ${usedColors.length} 种颜色，无需简化。`);
             return;
         }
 
-        // 准备 K-means 聚类数据（每个点代表一种颜色，权重为出现次数）
         const points = usedColors.map(c => ({
             r: c.rgb.r,
             g: c.rgb.g,
@@ -42,18 +181,10 @@ export async function simplifyColors(targetColorCount) {
             weight: c.count
         }));
 
-        // 执行 K-means 聚类
         const centroids = kMeans(points, targetColorCount);
-        console.log('聚类中心数量:', centroids.length);
+        const centroidColors = centroids.map(cent => findClosestPaletteColor(rgbToHex(cent.r, cent.g, cent.b)));
 
-        // 将聚类中心匹配到最近的色卡颜色
-        const centroidColors = centroids.map(cent => {
-            const hex = rgbToHex(cent.r, cent.g, cent.b);
-            return findClosestPaletteColor(hex);
-        });
-
-        // 为每个原颜色找到最近的聚类中心色
-        const colorMapping = new Map(); // 原 hex -> 新 hex
+        const colorMapping = new Map();
         usedColors.forEach(color => {
             let minDist = Infinity;
             let bestCentroidHex = centroidColors[0];
@@ -71,11 +202,12 @@ export async function simplifyColors(targetColorCount) {
             colorMapping.set(color.hex, bestCentroidHex);
         });
 
-        // 更新画布数据
         let changedCount = 0;
         for (let row = 0; row < state.gridHeight; row++) {
             for (let col = 0; col < state.gridWidth; col++) {
                 const oldHex = state.gridData[row][col];
+                const name = state.hexToNameMap.get(oldHex.toUpperCase());
+                if (name === '空白') continue;
                 const newHex = colorMapping.get(oldHex);
                 if (newHex && newHex !== oldHex) {
                     state.gridData[row][col] = newHex;
@@ -84,11 +216,18 @@ export async function simplifyColors(targetColorCount) {
             }
         }
 
-        // 重新绘制
         drawFullGrid();
 
-        // 统计简化后的颜色种类
-        const newColorCount = new Set(state.gridData.flat()).size;
+        const merged = mergeSmallRegions(3, 3);
+        if (merged) drawFullGrid();
+
+        const smoothed = smoothEdges();
+        if (smoothed) drawFullGrid();
+
+        const newColorCount = new Set(
+            Array.from(state.gridData.flat())
+                .filter(hex => state.hexToNameMap.get(hex.toUpperCase()) !== '空白')
+        ).size;
         alert(`颜色简化完成！\n简化前: ${usedColors.length} 种\n简化后: ${newColorCount} 种\n共修改 ${changedCount} 个格子。`);
     } catch (err) {
         console.error('颜色简化出错:', err);
@@ -96,18 +235,50 @@ export async function simplifyColors(targetColorCount) {
     }
 }
 
-/**
- * K-means 聚类算法（加权）
- * @param {Array} points 点数组，每个点包含 {r,g,b,weight}
- * @param {number} k 聚类数量
- * @param {number} maxIter 最大迭代次数
- * @returns {Array} 聚类中心数组 [{r,g,b}]
- */
+// 清除背景：从点击的格子开始 flood fill，将连通区域全部替换为空白
+export function clearBackground(startRow, startCol) {
+    const targetColor = state.gridData[startRow][startCol];
+    const targetName = state.hexToNameMap.get(targetColor.toUpperCase());
+    if (targetName === '空白') {
+        alert('点击的区域已经是空白，无需清除');
+        return false;
+    }
+
+    const H = state.gridHeight;
+    const W = state.gridWidth;
+    const directions = [[-1,0],[1,0],[0,-1],[0,1]];
+    const queue = [[startRow, startCol]];
+    const visited = Array(H).fill().map(() => Array(W).fill(false));
+    visited[startRow][startCol] = true;
+    let changed = false;
+
+    while (queue.length) {
+        const [r, c] = queue.shift();
+        if (state.gridData[r][c] !== targetColor) continue;
+        state.gridData[r][c] = '#FFFFFF'; // 空白色
+        changed = true;
+
+        for (const [dr, dc] of directions) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nr < H && nc >= 0 && nc < W && !visited[nr][nc] && state.gridData[nr][nc] === targetColor) {
+                visited[nr][nc] = true;
+                queue.push([nr, nc]);
+            }
+        }
+    }
+
+    if (changed) {
+        drawFullGrid();
+        alert(`已清除与所选格子颜色相同的连通区域（共 ${visited.flat().filter(v => v).length} 个格子）`);
+    }
+    return changed;
+}
+
 function kMeans(points, k, maxIter = 30) {
     if (k <= 0) return [];
     if (k >= points.length) return points.map(p => ({ r: p.r, g: p.g, b: p.b }));
 
-    // 随机初始化中心（基于权重随机选择）
     let centroids = [];
     const totalWeight = points.reduce((sum, p) => sum + p.weight, 0);
     for (let i = 0; i < k; i++) {
@@ -125,7 +296,6 @@ function kMeans(points, k, maxIter = 30) {
     let changed = true;
     let iter = 0;
     while (changed && iter < maxIter) {
-        // 分配每个点到最近的中心
         const clusters = Array(k).fill().map(() => []);
         points.forEach(point => {
             let minDist = Infinity;
@@ -144,12 +314,10 @@ function kMeans(points, k, maxIter = 30) {
             clusters[bestIdx].push(point);
         });
 
-        // 更新中心（加权平均）
         const newCentroids = [];
         for (let i = 0; i < k; i++) {
             const cluster = clusters[i];
             if (cluster.length === 0) {
-                // 如果某簇为空，则随机取一个全局点（避免中心丢失）
                 const randIdx = Math.floor(Math.random() * points.length);
                 newCentroids.push({ r: points[randIdx].r, g: points[randIdx].g, b: points[randIdx].b });
                 continue;
@@ -168,7 +336,6 @@ function kMeans(points, k, maxIter = 30) {
             });
         }
 
-        // 检查是否收敛
         changed = false;
         for (let i = 0; i < k; i++) {
             if (centroids[i].r !== newCentroids[i].r ||

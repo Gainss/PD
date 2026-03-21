@@ -8,10 +8,12 @@ export function getColorStats() {
             countMap.set(hex, (countMap.get(hex) || 0) + 1);
         }
     }
-    return Array.from(countMap.entries()).map(([hex, count]) => {
-        const name = state.hexToNameMap.get(hex.toUpperCase());
-        return { hex, name, count };
-    });
+    return Array.from(countMap.entries())
+        .map(([hex, count]) => {
+            const name = state.hexToNameMap.get(hex.toUpperCase());
+            return { hex, name, count };
+        })
+        .filter(item => item.name !== '空白');
 }
 
 export function sortByNameAsc(a, b) {
@@ -21,6 +23,12 @@ export function sortByNameAsc(a, b) {
 export function updateStatsWithSort(sortBy) {
     const statsContainer = document.getElementById('statsContainer');
     const colors = getColorStats();
+
+    const statsHeader = document.querySelector('.stats-header div:first-child span');
+    if (statsHeader) {
+        const usedCount = colors.length;
+        statsHeader.innerHTML = `📊 颜色使用统计 (已用 ${usedCount} 种颜色)`;
+    }
 
     if (colors.length === 0) {
         statsContainer.innerHTML = '<div style="color: #7b6e5d; text-align: center; padding: 12px;">绘制图案后统计将自动更新</div>';

@@ -2,7 +2,7 @@ import { state } from './state.js';
 import { clearCanvas } from './canvas.js';
 import { updateStatsWithSort } from './stats.js';
 import { exportCanvasPNG, exportUsedPalettePNG, exportHistory, importHistory, uploadImage } from './export.js';
-import { simplifyColors } from './simplify.js';
+import { simplifyColors, clearBackground } from './simplify.js';
 import { switchPalette } from './palette.js';
 
 export function initUI() {
@@ -62,7 +62,6 @@ export function initUI() {
         updateStatsWithSort(state.currentSort);
     });
 
-    // 简化颜色按钮
     const simplifyBtn = document.getElementById('simplifyBtn');
     if (simplifyBtn) {
         simplifyBtn.addEventListener('click', async () => {
@@ -82,26 +81,62 @@ export function initUI() {
         });
     }
 
-    // 色卡切换按钮
     const fullBtn = document.getElementById('paletteFullBtn');
     const lightBtn = document.getElementById('paletteLightBtn');
-    
-    if (fullBtn) {
+    if (fullBtn && lightBtn) {
         fullBtn.addEventListener('click', () => {
             switchPalette('full');
             fullBtn.classList.add('active');
             lightBtn.classList.remove('active');
-            // 可选：提示用户
             alert('已切换到完整版色卡（234色）');
         });
-    }
-    
-    if (lightBtn) {
         lightBtn.addEventListener('click', () => {
             switchPalette('light');
             lightBtn.classList.add('active');
             fullBtn.classList.remove('active');
             alert('已切换到精简版色卡（132色）');
+        });
+    }
+
+    const clearBgBtn = document.getElementById('clearBackgroundBtn');
+    if (clearBgBtn) {
+        let bgSelectMode = false;
+        clearBgBtn.addEventListener('click', () => {
+            bgSelectMode = true;
+            clearBgBtn.classList.add('active');
+            alert('请点击画布上要清除的背景区域（与该颜色连通的区域将变为空白）');
+        });
+        const canvas = state.canvas;
+        const handleCanvasClick = (e) => {
+            if (!bgSelectMode) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let clientX, clientY;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            const mouseX = (clientX - rect.left) * scaleX;
+            const mouseY = (clientY - rect.top) * scaleY;
+            const col = Math.floor(mouseX / state.BASE_CELL_SIZE);
+            const row = Math.floor(mouseY / state.BASE_CELL_SIZE);
+            if (row >= 0 && row < state.gridHeight && col >= 0 && col < state.gridWidth) {
+                clearBackground(row, col);
+            }
+            bgSelectMode = false;
+            clearBgBtn.classList.remove('active');
+        };
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', (e) => {
+            if (bgSelectMode) {
+                e.preventDefault();
+                handleCanvasClick(e);
+            }
         });
     }
 
