@@ -11,15 +11,19 @@ export function initCanvas() {
     state.canvas = document.getElementById('pixelCanvas');
     if (!state.canvas) return;
     state.ctx = state.canvas.getContext('2d');
+    resizeCanvas(state.gridWidth, state.gridHeight);
+    bindCanvasEvents();
+    drawFullGrid();
+}
 
-    state.canvas.width = state.gridWidth * state.BASE_CELL_SIZE;
-    state.canvas.height = state.gridHeight * state.BASE_CELL_SIZE;
+export function resizeCanvas(width, height) {
+    state.gridWidth = width;
+    state.gridHeight = height;
+    state.canvas.width = width * state.BASE_CELL_SIZE;
+    state.canvas.height = height * state.BASE_CELL_SIZE;
     state.canvas.style.width = '100%';
     state.canvas.style.height = 'auto';
-
-    state.gridData = initGridData(state.gridWidth, state.gridHeight);
-
-    bindCanvasEvents();
+    state.gridData = initGridData(width, height);
     drawFullGrid();
 }
 
@@ -27,7 +31,6 @@ function bindCanvasEvents() {
     const canvas = state.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // 鼠标事件
     canvas.addEventListener('mousedown', (e) => {
         e.preventDefault();
         if (e.button === 0) {
@@ -42,7 +45,6 @@ function bindCanvasEvents() {
     window.addEventListener('mouseup', () => { state.isDrawing = false; });
     canvas.addEventListener('mouseleave', () => { state.isDrawing = false; });
 
-    // 触摸事件
     let startTouchX, startTouchY;
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -160,6 +162,16 @@ export function drawFullGrid() {
         }
     }
 
+    drawGridLines(ctx);
+
+    if (state.showColorNames) {
+        drawColorNames(ctx);
+    }
+
+    updateStatsWithSort(state.currentSort);
+}
+
+function drawGridLines(ctx) {
     ctx.beginPath();
     ctx.strokeStyle = '#c0b6a8';
     ctx.lineWidth = 0.8;
@@ -177,31 +189,28 @@ export function drawFullGrid() {
     ctx.strokeStyle = '#9a8b7c';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(0, 0, state.canvas.width, state.canvas.height);
+}
 
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!isMobile) {
-        ctx.font = 'bold 10px "Courier New", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+export function drawColorNames(ctx) {
+    ctx.font = 'bold 10px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
-        for (let row = 0; row < state.gridHeight; row++) {
-            for (let col = 0; col < state.gridWidth; col++) {
-                const hex = state.gridData[row][col];
-                const name = state.hexToNameMap.get(hex.toUpperCase());
-                if (!name || name === '空白') continue;
+    for (let row = 0; row < state.gridHeight; row++) {
+        for (let col = 0; col < state.gridWidth; col++) {
+            const hex = state.gridData[row][col];
+            const name = state.hexToNameMap.get(hex.toUpperCase());
+            if (!name || name === '空白') continue;
 
-                const { r, g, b } = rgbFromHex(hex);
-                const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
+            const { r, g, b } = rgbFromHex(hex);
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
 
-                const x = col * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
-                const y = row * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
-                ctx.fillText(name, x, y);
-            }
+            const x = col * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
+            const y = row * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
+            ctx.fillText(name, x, y);
         }
     }
-
-    updateStatsWithSort(state.currentSort);
 }
 
 export function clearCanvas() {

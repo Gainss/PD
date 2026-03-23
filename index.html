@@ -10,7 +10,7 @@
 <div class="app-container">
     <h1>
         🧩 图豆师
-        <span>52x52 · 全格显色号</span>
+        <span id="sizeDisplay">52x52 · 全格显色号</span>
     </h1>
     <div class="sub">234种图豆专用色 | 左键绘制 · 右键/长按吸取 | 导出图纸/色卡/历史</div>
 
@@ -25,7 +25,12 @@
             <button id="uploadBtn" title="上传图片转图纸">📁 图片转图纸</button>
             <input type="file" id="imageUpload" accept="image/*" style="display: none;">
         </div>
+        <!-- 画板大小与色卡模式合并 -->
         <div class="tool-group">
+            <span>📐 画板大小：</span>
+            <button id="size52Btn" class="active-size">52x52</button>
+            <button id="size104Btn">104x104</button>
+            <span style="margin: 0 4px; color: #cdbcab;">|</span>
             <span>🎨 色卡模式：</span>
             <button id="paletteFullBtn" title="使用完整版234色">完整版</button>
             <button id="paletteLightBtn" title="使用精简版132色（推荐）" class="active">精简版</button>
@@ -45,6 +50,10 @@
                 <div class="mode-buttons">
                     <button id="brushModeBtn" class="active">✏️ 画笔</button>
                     <button id="eraserModeBtn">🧽 橡皮</button>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="showColorNamesToggle" checked>
+                        <span>显示色号</span>
+                    </label>
                 </div>
             </div>
             <span class="footer-info">⚡ 点击/拖动绘制 | 长按吸取</span>
@@ -68,11 +77,11 @@
     </div>
 
     <div class="signature">
-        ✦ 设计 · Gainss-v1.5.2 ✦
+        ✦ 设计 · Gainss-v1.5.3 ✦
     </div>
 </div>
 
-<!-- 悬浮按钮组（顺序：清空 → 清除背景 → 简化颜色 → 合并少量颜色） -->
+<!-- 悬浮按钮组 -->
 <div class="floating-buttons">
     <button id="clearBtn" title="清空画布">🗑️ 清空</button>
     <button id="clearBackgroundBtn" title="点击背景区域清除背景">🧹 清除背景</button>

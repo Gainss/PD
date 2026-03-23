@@ -1,17 +1,92 @@
 import { state } from './state.js';
 import { getColorStats, sortByNameAsc } from './stats.js';
-import { drawFullGrid } from './canvas.js';
+import { drawFullGrid, drawColorNames } from './canvas.js';
 import { rgbToHex, findClosestPaletteColor } from './utils.js';
 import { kMeans } from './simplify.js';
 
+/**
+ * 导出现有图纸为 PNG（自动放大 2 倍，文字更清晰）
+ */
 export function exportCanvasPNG() {
     if (!state.canvas) return;
+
+    const scale = 2;
+    const originalWidth = state.canvas.width;
+    const originalHeight = state.canvas.height;
+    const scaledWidth = originalWidth * scale;
+    const scaledHeight = originalHeight * scale;
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = scaledWidth;
+    offCanvas.height = scaledHeight;
+    const offCtx = offCanvas.getContext('2d');
+
+    offCtx.imageSmoothingEnabled = false;
+    offCtx.scale(scale, scale);
+
+    for (let row = 0; row < state.gridHeight; row++) {
+        for (let col = 0; col < state.gridWidth; col++) {
+            offCtx.fillStyle = state.gridData[row][col];
+            offCtx.fillRect(col * state.BASE_CELL_SIZE, row * state.BASE_CELL_SIZE,
+                            state.BASE_CELL_SIZE, state.BASE_CELL_SIZE);
+        }
+    }
+
+    drawGridLinesOnContext(offCtx, originalWidth, originalHeight, state.gridWidth, state.gridHeight, state.BASE_CELL_SIZE);
+    drawColorNamesOnContext(offCtx);
+
     const link = document.createElement('a');
     link.download = '图豆师图纸.png';
-    link.href = state.canvas.toDataURL('image/png');
+    link.href = offCanvas.toDataURL('image/png');
     link.click();
 }
 
+function drawGridLinesOnContext(ctx, width, height, gridW, gridH, cellSize) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#c0b6a8';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i <= gridW; i++) {
+        ctx.moveTo(i * cellSize, 0);
+        ctx.lineTo(i * cellSize, height);
+    }
+    for (let i = 0; i <= gridH; i++) {
+        ctx.moveTo(0, i * cellSize);
+        ctx.lineTo(width, i * cellSize);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#9a8b7c';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(0, 0, width, height);
+}
+
+function drawColorNamesOnContext(ctx) {
+    const cellSize = state.BASE_CELL_SIZE;
+    ctx.font = 'bold 10px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let row = 0; row < state.gridHeight; row++) {
+        for (let col = 0; col < state.gridWidth; col++) {
+            const hex = state.gridData[row][col];
+            const name = state.hexToNameMap.get(hex.toUpperCase());
+            if (!name || name === '空白') continue;
+
+            const { r, g, b } = rgbFromHex(hex);
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
+
+            const x = col * cellSize + cellSize / 2;
+            const y = row * cellSize + cellSize / 2;
+            ctx.fillText(name, x, y);
+        }
+    }
+}
+
+/**
+ * 导出已用色卡 PNG（间距放大 1.5 倍，标题改为“图豆师色卡”）
+ */
 export function exportUsedPalettePNG() {
     const colors = getColorStats();
     if (colors.length === 0) {
@@ -28,10 +103,11 @@ export function exportUsedPalettePNG() {
         groups.get(key).push(item);
     });
 
+    // 间距放大 1.5 倍
     const circleRadius = 24;
     const circleDiameter = circleRadius * 2;
-    const margin = 90;
-    const rowExtra = 70;
+    const margin = 90 * 1.5;       // 水平间距 135
+    const rowExtra = 70 * 1.5;     // 垂直行距 105
     const topMargin = 70;
     const leftMargin = 50;
     const maxPerRow = 6;
@@ -65,7 +141,7 @@ export function exportUsedPalettePNG() {
     offCtx.font = 'bold 35px sans-serif';
     offCtx.fillStyle = '#000000';
     offCtx.textAlign = 'center';
-    offCtx.fillText('已用图豆师色卡', canvasWidth / 2, 50);
+    offCtx.fillText('图豆师色卡', canvasWidth / 2, 50);   // 标题修改
 
     offCtx.textAlign = 'center';
     offCtx.textBaseline = 'middle';
@@ -173,17 +249,11 @@ export function importHistory(file) {
     reader.readAsText(file);
 }
 
-/**
- * 上传图片转图纸（优化版）
- * - 使用颜色量化（k-means）自动将图片颜色压缩到合适数量（默认16）
- * - 黑色/白色增强识别
- */
 export function uploadImage(file) {
     const reader = new FileReader();
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            // 直接缩放到 52x52
             const offCanvas = document.createElement('canvas');
             offCanvas.width = state.gridWidth;
             offCanvas.height = state.gridHeight;
@@ -194,7 +264,6 @@ export function uploadImage(file) {
             const imageData = offCtx.getImageData(0, 0, state.gridWidth, state.gridHeight);
             const data = imageData.data;
 
-            // 收集所有非透明像素的颜色
             const pixels = [];
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i];
@@ -202,7 +271,6 @@ export function uploadImage(file) {
                 const b = data[i+2];
                 const a = data[i+3];
                 if (a >= 128) {
-                    // 黑色阈值扩展：≤ 50 统一为黑色
                     if (r <= 50 && g <= 50 && b <= 50) {
                         pixels.push({ r: 0, g: 0, b: 0 });
                     } else {
@@ -212,7 +280,6 @@ export function uploadImage(file) {
             }
 
             if (pixels.length === 0) {
-                // 全透明，填充白色
                 for (let row = 0; row < state.gridHeight; row++) {
                     for (let col = 0; col < state.gridWidth; col++) {
                         state.gridData[row][col] = rgbToHex(255,255,255);
@@ -222,19 +289,15 @@ export function uploadImage(file) {
                 return;
             }
 
-            // 自动确定聚类数量（根据像素数量和复杂度）
             let targetColors = 16;
             if (pixels.length < 100) targetColors = 8;
             else if (pixels.length < 500) targetColors = 12;
             else targetColors = 16;
 
-            // 将每个像素作为点，进行 k-means 聚类
             const points = pixels.map(p => ({ r: p.r, g: p.g, b: p.b, weight: 1 }));
             const centroids = kMeans(points, targetColors, 20);
-            // 将聚类中心映射到色卡
             const centroidColors = centroids.map(c => findClosestPaletteColor(rgbToHex(c.r, c.g, c.b)));
 
-            // 为每个像素分配最近的聚类中心
             const pixelColors = pixels.map(p => {
                 let minDist = Infinity;
                 let bestIdx = 0;
@@ -252,7 +315,6 @@ export function uploadImage(file) {
                 return centroidColors[bestIdx];
             });
 
-            // 将结果填回 gridData
             let pixelIdx = 0;
             for (let row = 0; row < state.gridHeight; row++) {
                 for (let col = 0; col < state.gridWidth; col++) {

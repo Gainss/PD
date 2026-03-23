@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { clearCanvas } from './canvas.js';
+import { clearCanvas, resizeCanvas, drawFullGrid } from './canvas.js';
 import { updateStatsWithSort } from './stats.js';
 import { exportCanvasPNG, exportUsedPalettePNG, exportHistory, importHistory, uploadImage } from './export.js';
 import { simplifyColors, clearBackground, mergeRareColors } from './simplify.js';
@@ -97,6 +97,52 @@ export function initUI() {
             lightBtn.classList.add('active');
             fullBtn.classList.remove('active');
             alert('已切换到精简版色卡（132色）');
+        });
+    }
+
+    // 画板尺寸切换
+    const size52Btn = document.getElementById('size52Btn');
+    const size104Btn = document.getElementById('size104Btn');
+    const sizeDisplaySpan = document.getElementById('sizeDisplay');
+    if (size52Btn && size104Btn) {
+        size52Btn.addEventListener('click', () => {
+            if (state.currentGridSize === '52') return;
+            if (confirm('切换画板大小将清空当前图纸，确定吗？')) {
+                state.currentGridSize = '52';
+                resizeCanvas(52, 52);
+                size52Btn.classList.add('active-size');
+                size104Btn.classList.remove('active-size');
+                sizeDisplaySpan.textContent = '52x52 · 全格显色号';
+                updateStatsWithSort(state.currentSort);
+            }
+        });
+        size104Btn.addEventListener('click', () => {
+            if (state.currentGridSize === '104') return;
+            if (confirm('切换画板大小将清空当前图纸，确定吗？')) {
+                state.currentGridSize = '104';
+                resizeCanvas(104, 104);
+                size104Btn.classList.add('active-size');
+                size52Btn.classList.remove('active-size');
+                sizeDisplaySpan.textContent = '104x104 · 全格显色号';
+                updateStatsWithSort(state.currentSort);
+            }
+        });
+        if (state.currentGridSize === '52') {
+            size52Btn.classList.add('active-size');
+            size104Btn.classList.remove('active-size');
+        } else {
+            size104Btn.classList.add('active-size');
+            size52Btn.classList.remove('active-size');
+        }
+    }
+
+    // 显示色号开关
+    const toggle = document.getElementById('showColorNamesToggle');
+    if (toggle) {
+        toggle.checked = state.showColorNames;
+        toggle.addEventListener('change', (e) => {
+            state.showColorNames = e.target.checked;
+            drawFullGrid(); // 重新绘制以更新显示
         });
     }
 

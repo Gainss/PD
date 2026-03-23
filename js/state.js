@@ -11,5 +11,7 @@ export const state = {
     ctx: null,
     BASE_CELL_SIZE: 20,
     currentSort: 'count-desc',
-    clearModeActive: false
+    clearModeActive: false,
+    currentGridSize: '52',
+    showColorNames: true   // 新增：是否显示色号，默认开启
 };
