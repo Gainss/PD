@@ -2,17 +2,18 @@ import { state } from './state.js';
 import { getColorStats, sortByNameAsc } from './stats.js';
 import { drawFullGrid } from './canvas.js';
 import { rgbToHex, findClosestPaletteColor } from './utils.js';
+import { kMeans } from './simplify.js';
 
 export function exportCanvasPNG() {
     if (!state.canvas) return;
     const link = document.createElement('a');
-    link.download = '拼豆图纸.png';
+    link.download = '图豆师图纸.png';
     link.href = state.canvas.toDataURL('image/png');
     link.click();
 }
 
 export function exportUsedPalettePNG() {
-    const colors = getColorStats(); // 已排除空白
+    const colors = getColorStats();
     if (colors.length === 0) {
         alert('没有使用任何颜色');
         return;
@@ -64,7 +65,7 @@ export function exportUsedPalettePNG() {
     offCtx.font = 'bold 35px sans-serif';
     offCtx.fillStyle = '#000000';
     offCtx.textAlign = 'center';
-    offCtx.fillText('已用拼豆色卡', canvasWidth / 2, 50);
+    offCtx.fillText('已用图豆师色卡', canvasWidth / 2, 50);
 
     offCtx.textAlign = 'center';
     offCtx.textBaseline = 'middle';
@@ -100,7 +101,7 @@ export function exportUsedPalettePNG() {
     });
 
     const link = document.createElement('a');
-    link.download = '已用拼豆色卡.png';
+    link.download = '已用图豆师色卡.png';
     link.href = offCanvas.toDataURL('image/png');
     link.click();
 }
@@ -124,7 +125,7 @@ export function exportHistory() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `拼豆历史_${timestamp}.json`;
+    link.download = `图豆师历史_${timestamp}.json`;
     link.click();
     URL.revokeObjectURL(url);
 }
@@ -172,48 +173,95 @@ export function importHistory(file) {
     reader.readAsText(file);
 }
 
+/**
+ * 上传图片转图纸（优化版）
+ * - 使用颜色量化（k-means）自动将图片颜色压缩到合适数量（默认16）
+ * - 黑色/白色增强识别
+ */
 export function uploadImage(file) {
     const reader = new FileReader();
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            const maxWidth = 400;
-            let width = img.width;
-            let height = img.height;
-            if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-            }
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            tempCtx.drawImage(img, 0, 0, width, height);
-            
-            tempCtx.filter = 'blur(0.8px)';
-            tempCtx.drawImage(tempCanvas, 0, 0);
-            tempCtx.filter = 'none';
-            
+            // 直接缩放到 52x52
             const offCanvas = document.createElement('canvas');
             offCanvas.width = state.gridWidth;
             offCanvas.height = state.gridHeight;
             const offCtx = offCanvas.getContext('2d');
-            offCtx.drawImage(tempCanvas, 0, 0, state.gridWidth, state.gridHeight);
-            
+            offCtx.imageSmoothingEnabled = false;
+            offCtx.drawImage(img, 0, 0, state.gridWidth, state.gridHeight);
+
             const imageData = offCtx.getImageData(0, 0, state.gridWidth, state.gridHeight);
             const data = imageData.data;
+
+            // 收集所有非透明像素的颜色
+            const pixels = [];
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                const a = data[i+3];
+                if (a >= 128) {
+                    // 黑色阈值扩展：≤ 50 统一为黑色
+                    if (r <= 50 && g <= 50 && b <= 50) {
+                        pixels.push({ r: 0, g: 0, b: 0 });
+                    } else {
+                        pixels.push({ r, g, b });
+                    }
+                }
+            }
+
+            if (pixels.length === 0) {
+                // 全透明，填充白色
+                for (let row = 0; row < state.gridHeight; row++) {
+                    for (let col = 0; col < state.gridWidth; col++) {
+                        state.gridData[row][col] = rgbToHex(255,255,255);
+                    }
+                }
+                drawFullGrid();
+                return;
+            }
+
+            // 自动确定聚类数量（根据像素数量和复杂度）
+            let targetColors = 16;
+            if (pixels.length < 100) targetColors = 8;
+            else if (pixels.length < 500) targetColors = 12;
+            else targetColors = 16;
+
+            // 将每个像素作为点，进行 k-means 聚类
+            const points = pixels.map(p => ({ r: p.r, g: p.g, b: p.b, weight: 1 }));
+            const centroids = kMeans(points, targetColors, 20);
+            // 将聚类中心映射到色卡
+            const centroidColors = centroids.map(c => findClosestPaletteColor(rgbToHex(c.r, c.g, c.b)));
+
+            // 为每个像素分配最近的聚类中心
+            const pixelColors = pixels.map(p => {
+                let minDist = Infinity;
+                let bestIdx = 0;
+                for (let i = 0; i < centroids.length; i++) {
+                    const cent = centroids[i];
+                    const dr = p.r - cent.r;
+                    const dg = p.g - cent.g;
+                    const db = p.b - cent.b;
+                    const dist = dr*dr + dg*dg + db*db;
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestIdx = i;
+                    }
+                }
+                return centroidColors[bestIdx];
+            });
+
+            // 将结果填回 gridData
+            let pixelIdx = 0;
             for (let row = 0; row < state.gridHeight; row++) {
                 for (let col = 0; col < state.gridWidth; col++) {
-                    const index = (row * state.gridWidth + col) * 4;
-                    const r = data[index];
-                    const g = data[index + 1];
-                    const b = data[index + 2];
-                    const a = data[index + 3];
+                    const idx = (row * state.gridWidth + col) * 4;
+                    const a = data[idx + 3];
                     if (a < 128) {
                         state.gridData[row][col] = rgbToHex(255,255,255);
                     } else {
-                        const hex = rgbToHex(r, g, b);
-                        state.gridData[row][col] = findClosestPaletteColor(hex);
+                        state.gridData[row][col] = pixelColors[pixelIdx++];
                     }
                 }
             }

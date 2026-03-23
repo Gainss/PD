@@ -1,11 +1,9 @@
-// simplify.js - 颜色简化（聚类压缩 + 小区域合并 + 边缘平滑）
 import { state } from './state.js';
 import { rgbFromHex, rgbToHex, findClosestPaletteColor } from './utils.js';
 import { drawFullGrid } from './canvas.js';
 
 /**
  * 合并小区域（面积 ≤ maxArea，且该颜色全局出现次数 ≤ maxCount）
- * 排除空白颜色
  */
 function mergeSmallRegions(maxArea = 3, maxColorCount = 3) {
     const H = state.gridHeight;
@@ -100,7 +98,7 @@ function mergeSmallRegions(maxArea = 3, maxColorCount = 3) {
 }
 
 /**
- * 边缘平滑：3x3邻域内多数颜色替换，排除空白
+ * 边缘平滑
  */
 function smoothEdges() {
     const H = state.gridHeight;
@@ -235,7 +233,6 @@ export async function simplifyColors(targetColorCount) {
     }
 }
 
-// 清除背景：从点击的格子开始 flood fill，将连通区域全部替换为空白
 export function clearBackground(startRow, startCol) {
     const targetColor = state.gridData[startRow][startCol];
     const targetName = state.hexToNameMap.get(targetColor.toUpperCase());
@@ -255,7 +252,7 @@ export function clearBackground(startRow, startCol) {
     while (queue.length) {
         const [r, c] = queue.shift();
         if (state.gridData[r][c] !== targetColor) continue;
-        state.gridData[r][c] = '#FFFFFF'; // 空白色
+        state.gridData[r][c] = '#FFFFFF';
         changed = true;
 
         for (const [dr, dc] of directions) {
@@ -275,7 +272,75 @@ export function clearBackground(startRow, startCol) {
     return changed;
 }
 
-function kMeans(points, k, maxIter = 30) {
+export function mergeRareColors(minCount = 5) {
+    const colorCount = new Map();
+    for (let row = 0; row < state.gridHeight; row++) {
+        for (let col = 0; col < state.gridWidth; col++) {
+            const hex = state.gridData[row][col];
+            const name = state.hexToNameMap.get(hex.toUpperCase());
+            if (name === '空白') continue;
+            colorCount.set(hex, (colorCount.get(hex) || 0) + 1);
+        }
+    }
+
+    const abundantColors = [];
+    const rareColors = [];
+    for (const [hex, count] of colorCount) {
+        if (count >= minCount) {
+            abundantColors.push({ hex, count, rgb: rgbFromHex(hex) });
+        } else {
+            rareColors.push({ hex, count, rgb: rgbFromHex(hex) });
+        }
+    }
+
+    if (rareColors.length === 0) {
+        alert(`所有颜色使用数量均 ≥ ${minCount}，无需合并。`);
+        return;
+    }
+
+    if (abundantColors.length === 0) {
+        alert(`没有足够多的颜色（数量 ≥ ${minCount}）作为目标，无法合并。`);
+        return;
+    }
+
+    const replaceMap = new Map();
+    for (const rare of rareColors) {
+        let bestColor = null;
+        let minDist = Infinity;
+        for (const abundant of abundantColors) {
+            const dr = rare.rgb.r - abundant.rgb.r;
+            const dg = rare.rgb.g - abundant.rgb.g;
+            const db = rare.rgb.b - abundant.rgb.b;
+            const dist = dr*dr + dg*dg + db*db;
+            if (dist < minDist) {
+                minDist = dist;
+                bestColor = abundant.hex;
+            }
+        }
+        replaceMap.set(rare.hex, bestColor);
+    }
+
+    let changedCount = 0;
+    for (let row = 0; row < state.gridHeight; row++) {
+        for (let col = 0; col < state.gridWidth; col++) {
+            const oldHex = state.gridData[row][col];
+            const newHex = replaceMap.get(oldHex);
+            if (newHex && newHex !== oldHex) {
+                state.gridData[row][col] = newHex;
+                changedCount++;
+            }
+        }
+    }
+
+    if (changedCount > 0) {
+        drawFullGrid();
+        alert(`合并完成！\n共将 ${rareColors.length} 种使用数量 < ${minCount} 的颜色合并到相近的大颜色中。\n修改了 ${changedCount} 个格子。`);
+    } else {
+        alert('没有发生任何变化，可能是阈值设置问题。');
+    }
+}
+
+export function kMeans(points, k, maxIter = 30) {
     if (k <= 0) return [];
     if (k >= points.length) return points.map(p => ({ r: p.r, g: p.g, b: p.b }));
 

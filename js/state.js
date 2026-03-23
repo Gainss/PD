@@ -10,5 +10,6 @@ export const state = {
     canvas: null,
     ctx: null,
     BASE_CELL_SIZE: 20,
-    currentSort: 'count-desc'
+    currentSort: 'count-desc',
+    clearModeActive: false
 };

@@ -2,8 +2,10 @@ import { state } from './state.js';
 import { clearCanvas } from './canvas.js';
 import { updateStatsWithSort } from './stats.js';
 import { exportCanvasPNG, exportUsedPalettePNG, exportHistory, importHistory, uploadImage } from './export.js';
-import { simplifyColors, clearBackground } from './simplify.js';
+import { simplifyColors, clearBackground, mergeRareColors } from './simplify.js';
 import { switchPalette } from './palette.js';
+
+let hasShownClearBgTip = false;
 
 export function initUI() {
     const brushBtn = document.getElementById('brushModeBtn');
@@ -100,15 +102,18 @@ export function initUI() {
 
     const clearBgBtn = document.getElementById('clearBackgroundBtn');
     if (clearBgBtn) {
-        let bgSelectMode = false;
         clearBgBtn.addEventListener('click', () => {
-            bgSelectMode = true;
+            state.clearModeActive = true;
             clearBgBtn.classList.add('active');
-            alert('请点击画布上要清除的背景区域（与该颜色连通的区域将变为空白）');
+            if (!hasShownClearBgTip) {
+                alert('请点击画布上要清除的背景区域（与该颜色连通的区域将变为空白）');
+                hasShownClearBgTip = true;
+            }
         });
+
         const canvas = state.canvas;
         const handleCanvasClick = (e) => {
-            if (!bgSelectMode) return;
+            if (!state.clearModeActive) return;
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -128,15 +133,29 @@ export function initUI() {
             if (row >= 0 && row < state.gridHeight && col >= 0 && col < state.gridWidth) {
                 clearBackground(row, col);
             }
-            bgSelectMode = false;
+            state.clearModeActive = false;
             clearBgBtn.classList.remove('active');
         };
         canvas.addEventListener('click', handleCanvasClick);
         canvas.addEventListener('touchstart', (e) => {
-            if (bgSelectMode) {
+            if (state.clearModeActive) {
                 e.preventDefault();
                 handleCanvasClick(e);
             }
+        });
+    }
+
+    const mergeRareBtn = document.getElementById('mergeRareBtn');
+    if (mergeRareBtn) {
+        mergeRareBtn.addEventListener('click', () => {
+            const minCount = prompt('请输入最小使用数量阈值（低于此值的颜色将被合并）', '5');
+            if (minCount === null) return;
+            const threshold = parseInt(minCount, 10);
+            if (isNaN(threshold) || threshold < 1) {
+                alert('请输入有效的数字（>=1）');
+                return;
+            }
+            mergeRareColors(threshold);
         });
     }
 

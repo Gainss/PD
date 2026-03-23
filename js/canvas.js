@@ -27,7 +27,7 @@ function bindCanvasEvents() {
     const canvas = state.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // 鼠标事件（PC）
+    // 鼠标事件
     canvas.addEventListener('mousedown', (e) => {
         e.preventDefault();
         if (e.button === 0) {
@@ -42,10 +42,13 @@ function bindCanvasEvents() {
     window.addEventListener('mouseup', () => { state.isDrawing = false; });
     canvas.addEventListener('mouseleave', () => { state.isDrawing = false; });
 
-    // 移动端触摸事件
+    // 触摸事件
+    let startTouchX, startTouchY;
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
+        startTouchX = touch.clientX;
+        startTouchY = touch.clientY;
         touchStartX = touch.clientX;
         touchStartY = touch.clientY;
         hasMoved = false;
@@ -55,29 +58,29 @@ function bindCanvasEvents() {
         if (longPressTimer) clearTimeout(longPressTimer);
         longPressTimer = setTimeout(() => {
             longPressTriggered = true;
-            pickColorFromEvent({ clientX: touchStartX, clientY: touchStartY });
+            e.preventDefault();
+            pickColorFromEvent({ clientX: startTouchX, clientY: startTouchY });
             state.isDrawing = false;
         }, 500);
     });
 
     canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
         const touch = e.touches[0];
-        const dx = Math.abs(touch.clientX - touchStartX);
-        const dy = Math.abs(touch.clientY - touchStartY);
+        const dx = Math.abs(touch.clientX - startTouchX);
+        const dy = Math.abs(touch.clientY - startTouchY);
 
-        if (dx > 5 || dy > 5) {
-            hasMoved = true;
+        if (dx < 10 && dy < 10) {
+            e.preventDefault();
+            if (longPressTriggered) return;
+            if (state.isDrawing) {
+                handleDraw({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {} });
+            }
+        } else {
+            state.isDrawing = false;
             if (longPressTimer) {
                 clearTimeout(longPressTimer);
                 longPressTimer = null;
             }
-        }
-
-        if (longPressTriggered) return;
-
-        if (state.isDrawing) {
-            handleDraw({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {} });
         }
     });
 
@@ -91,7 +94,7 @@ function bindCanvasEvents() {
         if (!hasMoved && !longPressTriggered) {
             const wasDrawing = state.isDrawing;
             state.isDrawing = true;
-            handleDraw({ clientX: touchStartX, clientY: touchStartY, preventDefault: () => {} });
+            handleDraw({ clientX: startTouchX, clientY: startTouchY, preventDefault: () => {} });
             state.isDrawing = wasDrawing;
         }
 
@@ -117,6 +120,7 @@ function pickColorFromEvent(e) {
 }
 
 function handleDraw(e) {
+    if (state.clearModeActive) return;
     if (!state.isDrawing) return;
     e.preventDefault();
 
@@ -174,24 +178,26 @@ export function drawFullGrid() {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(0, 0, state.canvas.width, state.canvas.height);
 
-    ctx.font = 'bold 10px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!isMobile) {
+        ctx.font = 'bold 10px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
 
-    for (let row = 0; row < state.gridHeight; row++) {
-        for (let col = 0; col < state.gridWidth; col++) {
-            const hex = state.gridData[row][col];
-            const name = state.hexToNameMap.get(hex.toUpperCase());
-            // 空白颜色不显示文字
-            if (!name || name === '空白') continue;
+        for (let row = 0; row < state.gridHeight; row++) {
+            for (let col = 0; col < state.gridWidth; col++) {
+                const hex = state.gridData[row][col];
+                const name = state.hexToNameMap.get(hex.toUpperCase());
+                if (!name || name === '空白') continue;
 
-            const { r, g, b } = rgbFromHex(hex);
-            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
+                const { r, g, b } = rgbFromHex(hex);
+                const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+                ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
 
-            const x = col * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
-            const y = row * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
-            ctx.fillText(name, x, y);
+                const x = col * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
+                const y = row * state.BASE_CELL_SIZE + state.BASE_CELL_SIZE / 2;
+                ctx.fillText(name, x, y);
+            }
         }
     }
 
