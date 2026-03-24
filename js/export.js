@@ -1,71 +1,67 @@
 import { state } from './state.js';
 import { getColorStats, sortByNameAsc } from './stats.js';
-import { drawFullGrid, drawColorNames } from './canvas.js';
-import { rgbToHex, findClosestPaletteColor } from './utils.js';
+import { drawFullGrid } from './canvas.js';
+import { rgbToHex, rgbFromHex, findClosestPaletteColor } from './utils.js';
 import { kMeans } from './simplify.js';
 
 /**
- * 导出现有图纸为 PNG（自动放大 2 倍，文字更清晰）
+ * 导出现有图纸为 PNG（放大 2 倍，文字清晰）
  */
 export function exportCanvasPNG() {
     if (!state.canvas) return;
 
-    const scale = 2;
-    const originalWidth = state.canvas.width;
-    const originalHeight = state.canvas.height;
-    const scaledWidth = originalWidth * scale;
-    const scaledHeight = originalHeight * scale;
+    const scale = 2;                     // 放大倍数
+    const originalCellSize = state.BASE_CELL_SIZE; // 20px
+    const scaledCellSize = originalCellSize * scale;
 
+    const width = state.gridWidth * scaledCellSize;
+    const height = state.gridHeight * scaledCellSize;
+
+    // 创建离屏画布
     const offCanvas = document.createElement('canvas');
-    offCanvas.width = scaledWidth;
-    offCanvas.height = scaledHeight;
+    offCanvas.width = width;
+    offCanvas.height = height;
     const offCtx = offCanvas.getContext('2d');
 
+    // 禁用图像平滑，保持像素锐利
     offCtx.imageSmoothingEnabled = false;
-    offCtx.scale(scale, scale);
 
+    // 1. 绘制所有颜色格子（使用放大后的坐标）
     for (let row = 0; row < state.gridHeight; row++) {
         for (let col = 0; col < state.gridWidth; col++) {
             offCtx.fillStyle = state.gridData[row][col];
-            offCtx.fillRect(col * state.BASE_CELL_SIZE, row * state.BASE_CELL_SIZE,
-                            state.BASE_CELL_SIZE, state.BASE_CELL_SIZE);
+            offCtx.fillRect(
+                col * scaledCellSize,
+                row * scaledCellSize,
+                scaledCellSize,
+                scaledCellSize
+            );
         }
     }
 
-    drawGridLinesOnContext(offCtx, originalWidth, originalHeight, state.gridWidth, state.gridHeight, state.BASE_CELL_SIZE);
-    drawColorNamesOnContext(offCtx);
-
-    const link = document.createElement('a');
-    link.download = '图豆师图纸.png';
-    link.href = offCanvas.toDataURL('image/png');
-    link.click();
-}
-
-function drawGridLinesOnContext(ctx, width, height, gridW, gridH, cellSize) {
-    ctx.beginPath();
-    ctx.strokeStyle = '#c0b6a8';
-    ctx.lineWidth = 0.8;
-    for (let i = 0; i <= gridW; i++) {
-        ctx.moveTo(i * cellSize, 0);
-        ctx.lineTo(i * cellSize, height);
+    // 2. 绘制网格线（使用放大后的坐标）
+    offCtx.beginPath();
+    offCtx.strokeStyle = '#c0b6a8';
+    offCtx.lineWidth = 0.8 * scale;      // 线宽也适当放大
+    for (let i = 0; i <= state.gridWidth; i++) {
+        offCtx.moveTo(i * scaledCellSize, 0);
+        offCtx.lineTo(i * scaledCellSize, height);
     }
-    for (let i = 0; i <= gridH; i++) {
-        ctx.moveTo(0, i * cellSize);
-        ctx.lineTo(width, i * cellSize);
+    for (let i = 0; i <= state.gridHeight; i++) {
+        offCtx.moveTo(0, i * scaledCellSize);
+        offCtx.lineTo(width, i * scaledCellSize);
     }
-    ctx.stroke();
+    offCtx.stroke();
 
-    ctx.beginPath();
-    ctx.strokeStyle = '#9a8b7c';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(0, 0, width, height);
-}
+    offCtx.beginPath();
+    offCtx.strokeStyle = '#9a8b7c';
+    offCtx.lineWidth = 1.5 * scale;
+    offCtx.strokeRect(0, 0, width, height);
 
-function drawColorNamesOnContext(ctx) {
-    const cellSize = state.BASE_CELL_SIZE;
-    ctx.font = 'bold 10px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    // 3. 绘制色号文字（字体大小随缩放比例增大）
+    offCtx.font = `bold ${10 * scale}px "Courier New", monospace`;
+    offCtx.textAlign = 'center';
+    offCtx.textBaseline = 'middle';
 
     for (let row = 0; row < state.gridHeight; row++) {
         for (let col = 0; col < state.gridWidth; col++) {
@@ -75,13 +71,19 @@ function drawColorNamesOnContext(ctx) {
 
             const { r, g, b } = rgbFromHex(hex);
             const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            ctx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
+            offCtx.fillStyle = luminance > 186 ? '#000000' : '#FFFFFF';
 
-            const x = col * cellSize + cellSize / 2;
-            const y = row * cellSize + cellSize / 2;
-            ctx.fillText(name, x, y);
+            const x = col * scaledCellSize + scaledCellSize / 2;
+            const y = row * scaledCellSize + scaledCellSize / 2;
+            offCtx.fillText(name, x, y);
         }
     }
+
+    // 导出图片
+    const link = document.createElement('a');
+    link.download = '图豆师图纸.png';
+    link.href = offCanvas.toDataURL('image/png');
+    link.click();
 }
 
 /**
@@ -141,7 +143,7 @@ export function exportUsedPalettePNG() {
     offCtx.font = 'bold 35px sans-serif';
     offCtx.fillStyle = '#000000';
     offCtx.textAlign = 'center';
-    offCtx.fillText('图豆师色卡', canvasWidth / 2, 50);   // 标题修改
+    offCtx.fillText('图豆师色卡', canvasWidth / 2, 50);
 
     offCtx.textAlign = 'center';
     offCtx.textBaseline = 'middle';
